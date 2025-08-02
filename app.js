@@ -3,95 +3,339 @@ const app = express()
 const path = require('path')
 const user = require('./model/user')
 
-app.set('view engine','ejs')
-app.use(express.json())
-app.use(express.urlencoded({extended : true}))
-app.use(express.static(path.join(__dirname,'public')))
+// Environment variables with defaults
+const PORT = process.env.PORT || 3000
+const NODE_ENV = process.env.NODE_ENV || 'development'
+
+// Security middleware (recommended for production)
+app.use((req, res, next) => {
+    // Basic security headers
+    res.setHeader('X-Content-Type-Options', 'nosniff')
+    res.setHeader('X-Frame-Options', 'DENY')
+    res.setHeader('X-XSS-Protection', '1; mode=block')
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin')
+    next()
+})
+
+// Request logging middleware (development only)
+if (NODE_ENV === 'development') {
+    app.use((req, res, next) => {
+        console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`)
+        next()
+    })
+}
+
+// View engine setup
+app.set('view engine', 'ejs')
+app.set('views', path.join(__dirname, 'views'))
+
+// Body parsing middleware with size limits
+app.use(express.json({ limit: '10mb' }))
+app.use(express.urlencoded({ extended: true, limit: '10mb' }))
+
+// Static files middleware
+app.use(express.static(path.join(__dirname, 'public')))
+
+// Database connection error handling
+const mongoose = require('mongoose')
+mongoose.connection.on('error', (err) => {
+    console.error('MongoDB connection error:', err)
+})
+
+mongoose.connection.on('connected', () => {
+    console.log('Successfully connected to MongoDB')
+})
+
+mongoose.connection.on('disconnected', () => {
+    console.log('MongoDB disconnected')
+})
+
+// Graceful shutdown
+process.on('SIGINT', async () => {
+    console.log('Shutting down gracefully...')
+    await mongoose.connection.close()
+    process.exit(0)
+})
+
+// Routes
 
 // Home route
-app.get('/',(req,res)=>{
-    res.render('index')
+app.get('/', (req, res) => {
+    try {
+        res.render('index')
+    } catch (error) {
+        console.error('Error rendering index page:', error)
+        res.status(500).render('error', { 
+            error: 'Failed to load page',
+            message: NODE_ENV === 'development' ? error.message : 'Internal server error'
+        })
+    }
 })
 
 // Read all users route
-app.get('/read', async (req,res)=>{
+app.get('/read', async (req, res) => {
     try {
-        let users = await user.find()
-        res.render('read',{users})
+        const users = await user.find().lean() // .lean() for better performance
+        res.render('read', { users })
     } catch (error) {
         console.error('Error fetching users:', error)
-        res.status(500).send('Error fetching users')
+        res.status(500).render('error', { 
+            error: 'Failed to fetch users',
+            message: NODE_ENV === 'development' ? error.message : 'Database connection error'
+        })
     }
 })
 
-// Delete user route - using URL parameter instead of query
-app.get('/delete/:id', async (req,res)=>{
+// Delete user route
+app.get('/delete/:id', async (req, res) => {
     try {
-        let deleteduser = await user.findByIdAndDelete(req.params.id)
-        if (!deleteduser) {
-            return res.status(404).send('User not found')
+        // Validate ObjectId format
+        if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+            return res.status(400).render('error', {
+                error: 'Invalid user ID',
+                message: 'The provided user ID is not valid'
+            })
         }
+
+        const deletedUser = await user.findByIdAndDelete(req.params.id)
+        
+        if (!deletedUser) {
+            return res.status(404).render('error', {
+                error: 'User not found',
+                message: 'The user you are trying to delete does not exist'
+            })
+        }
+
+        console.log(`User deleted: ${deletedUser.name} (${deletedUser._id})`)
         res.redirect('/read')
     } catch (error) {
         console.error('Error deleting user:', error)
-        res.status(500).send('Error deleting user')
+        res.status(500).render('error', { 
+            error: 'Failed to delete user',
+            message: NODE_ENV === 'development' ? error.message : 'Database operation failed'
+        })
     }
 })
 
-// Edit user form route - show edit form
-app.get('/edit/:id', async (req,res)=>{
+// Edit user form route
+app.get('/edit/:id', async (req, res) => {
     try {
-        let userToEdit = await user.findById(req.params.id)
-        if (!userToEdit) {
-            return res.status(404).send('User not found')
+        // Validate ObjectId format
+        if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+            return res.status(400).render('error', {
+                error: 'Invalid user ID',
+                message: 'The provided user ID is not valid'
+            })
         }
-        res.render('edit', {user: userToEdit})
+
+        const userToEdit = await user.findById(req.params.id).lean()
+        
+        if (!userToEdit) {
+            return res.status(404).render('error', {
+                error: 'User not found',
+                message: 'The user you are trying to edit does not exist'
+            })
+        }
+
+        res.render('edit', { user: userToEdit })
     } catch (error) {
         console.error('Error fetching user for edit:', error)
-        res.status(500).send('Error fetching user')
+        res.status(500).render('error', { 
+            error: 'Failed to load user data',
+            message: NODE_ENV === 'development' ? error.message : 'Database connection error'
+        })
     }
 })
 
-// Update user route - handle form submission
-app.post('/update/:id', async (req,res)=>{
+// Update user route
+app.post('/update/:id', async (req, res) => {
     try {
-        let {name, email, image} = req.body
-        let updatedUser = await user.findByIdAndUpdate(
-            req.params.id,
-            {name, email, image},
-            {new: true, runValidators: true}
-        )
-        if (!updatedUser) {
-            return res.status(404).send('User not found')
+        // Validate ObjectId format
+        if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+            return res.status(400).render('error', {
+                error: 'Invalid user ID',
+                message: 'The provided user ID is not valid'
+            })
         }
+
+        // Input validation
+        const { name, email, image } = req.body
+
+        if (!name || !email) {
+            return res.status(400).render('error', {
+                error: 'Missing required fields',
+                message: 'Name and email are required fields'
+            })
+        }
+
+        // Basic email validation
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+        if (!emailRegex.test(email)) {
+            return res.status(400).render('error', {
+                error: 'Invalid email format',
+                message: 'Please provide a valid email address'
+            })
+        }
+
+        // URL validation for image (if provided)
+        if (image && image.trim()) {
+            try {
+                new URL(image.trim())
+            } catch (urlError) {
+                return res.status(400).render('error', {
+                    error: 'Invalid image URL',
+                    message: 'Please provide a valid image URL'
+                })
+            }
+        }
+
+        const updatedUser = await user.findByIdAndUpdate(
+            req.params.id,
+            { 
+                name: name.trim(), 
+                email: email.trim().toLowerCase(), 
+                image: image ? image.trim() : '' 
+            },
+            { new: true, runValidators: true }
+        )
+
+        if (!updatedUser) {
+            return res.status(404).render('error', {
+                error: 'User not found',
+                message: 'The user you are trying to update does not exist'
+            })
+        }
+
+        console.log(`User updated: ${updatedUser.name} (${updatedUser._id})`)
         res.redirect('/read')
     } catch (error) {
         console.error('Error updating user:', error)
-        res.status(500).send('Error updating user')
+        
+        // Handle validation errors
+        if (error.name === 'ValidationError') {
+            return res.status(400).render('error', {
+                error: 'Validation Error',
+                message: Object.values(error.errors).map(e => e.message).join(', ')
+            })
+        }
+
+        res.status(500).render('error', { 
+            error: 'Failed to update user',
+            message: NODE_ENV === 'development' ? error.message : 'Database operation failed'
+        })
     }
 })
 
 // Create user route
-app.post('/create', async (req,res)=>{
+app.post('/create', async (req, res) => {
     try {
-        let {name, email, image} = req.body
-        let createduser = await user.create({
-            name,
-            email,
-            image
-        }) 
+        // Input validation
+        const { name, email, image } = req.body
+
+        if (!name || !email) {
+            return res.status(400).render('error', {
+                error: 'Missing required fields',
+                message: 'Name and email are required fields'
+            })
+        }
+
+        // Basic email validation
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+        if (!emailRegex.test(email)) {
+            return res.status(400).render('error', {
+                error: 'Invalid email format',
+                message: 'Please provide a valid email address'
+            })
+        }
+
+        // Check for duplicate email
+        const existingUser = await user.findOne({ email: email.trim().toLowerCase() })
+        if (existingUser) {
+            return res.status(409).render('error', {
+                error: 'Email already exists',
+                message: 'A user with this email address already exists'
+            })
+        }
+
+        // URL validation for image (if provided)
+        if (image && image.trim()) {
+            try {
+                new URL(image.trim())
+            } catch (urlError) {
+                return res.status(400).render('error', {
+                    error: 'Invalid image URL',
+                    message: 'Please provide a valid image URL'
+                })
+            }
+        }
+
+        const createdUser = await user.create({
+            name: name.trim(),
+            email: email.trim().toLowerCase(),
+            image: image ? image.trim() : ''
+        })
+
+        console.log(`User created: ${createdUser.name} (${createdUser._id})`)
         res.redirect('/read')
     } catch (error) {
         console.error('Error creating user:', error)
-        res.status(500).send('Error creating user')
+        
+        // Handle validation errors
+        if (error.name === 'ValidationError') {
+            return res.status(400).render('error', {
+                error: 'Validation Error',
+                message: Object.values(error.errors).map(e => e.message).join(', ')
+            })
+        }
+
+        // Handle duplicate key errors
+        if (error.code === 11000) {
+            return res.status(409).render('error', {
+                error: 'Duplicate Entry',
+                message: 'A user with this information already exists'
+            })
+        }
+
+        res.status(500).render('error', { 
+            error: 'Failed to create user',
+            message: NODE_ENV === 'development' ? error.message : 'Database operation failed'
+        })
     }
 })
 
-// Create user form route (optional - if you want a separate create page)
-app.get('/create', (req,res)=>{
-    res.render('create')
+// Create user form route
+app.get('/create', (req, res) => {
+    try {
+        res.render('create')
+    } catch (error) {
+        console.error('Error rendering create page:', error)
+        res.status(500).render('error', { 
+            error: 'Failed to load page',
+            message: NODE_ENV === 'development' ? error.message : 'Internal server error'
+        })
+    }
 })
 
-app.listen(3000,()=>{
-    console.log('Server listening at port 3000')
+// 404 handler - must be after all other routes
+app.use('*', (req, res) => {
+    res.status(404).render('error', {
+        error: 'Page Not Found',
+        message: `The page ${req.originalUrl} does not exist`
+    })
+})
+
+// Global error handler - must be last
+app.use((error, req, res, next) => {
+    console.error('Unhandled error:', error)
+    res.status(500).render('error', {
+        error: 'Internal Server Error',
+        message: NODE_ENV === 'development' ? error.message : 'Something went wrong'
+    })
+})
+
+// Start server
+app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`)
+    console.log(`Environment: ${NODE_ENV}`)
+    console.log(`Access the app at: http://localhost:${PORT}`)
 })
