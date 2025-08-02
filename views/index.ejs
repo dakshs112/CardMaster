@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="/stylesheets/styles.css">
+     <script src="https://cdn.tailwindcss.com"></script>
+    <title>Document</title>
+</head>
+<body class="bg-zinc-700">
+    <div class="w-full h-full bg-zinc-800 p-10 text-white">
+        <h1 class="text-3xl mb-5">Create user</h1>
+        <form action="/create" method="post">
+            <input class="px-5 py-3 bg-zinc-700 rounded-lg " type="text" name="name" placeholder="name">
+            <input class="px-5 py-3 bg-zinc-700 rounded-lg " type="text" name="email" placeholder="email">
+            <input class="px-5 py-3 bg-zinc-700 rounded-lg " type="text" name="image" placeholder="image url">
+            <input class="px-5 py-3 bg-blue-700 rounded-lg " type="submit" placeholder="name">
+        </form>
+        <a href="/read">Go to read</a>
+    </div>
+</body>
+</html>
