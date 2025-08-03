@@ -2,11 +2,11 @@ const express = require('express')
 const app = express()
 const path = require('path')
 
-// Environment variables with defaults
+// Env Bana diye
 const PORT = process.env.PORT || 3000
 const NODE_ENV = process.env.NODE_ENV || 'development'
 
-// In-memory storage for users (will reset when server restarts)
+// Default wale
 let users = [
     {
         _id: '1',
@@ -22,13 +22,13 @@ let users = [
     }
 ]
 
-// Counter for generating IDs
+// Counter for saari generating IDs
 let userIdCounter = 3
 
 // Trust proxy for deployment platforms like Render, Heroku, etc.
 app.set('trust proxy', 1)
 
-// Security middleware (recommended for production)
+// Middleware Security ke liye
 app.use((req, res, next) => {
     // Basic security headers
     res.setHeader('X-Content-Type-Options', 'nosniff')
@@ -38,7 +38,7 @@ app.use((req, res, next) => {
     next()
 })
 
-// Request logging middleware (development only)
+// Track middlewares par sirf mere dev ke time
 if (NODE_ENV === 'development') {
     app.use((req, res, next) => {
         console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`)
@@ -46,18 +46,18 @@ if (NODE_ENV === 'development') {
     })
 }
 
-// View engine setup
+// View engine lagana
 app.set('view engine', 'ejs')
 app.set('views', path.join(__dirname, 'views'))
 
-// Body parsing middleware with size limits
+// Body ki  parsing of middleware within limits
 app.use(express.json({ limit: '10mb' }))
 app.use(express.urlencoded({ extended: true, limit: '10mb' }))
 
 // Static files middleware
 app.use(express.static(path.join(__dirname, 'public')))
 
-// Graceful shutdown
+// Smoothy AF shutdown ke liye
 process.on('SIGINT', async () => {
     console.log('Shutting down gracefully...')
     process.exit(0)
@@ -68,9 +68,9 @@ process.on('SIGTERM', async () => {
     process.exit(0)
 })
 
-// Routes
+// Routing start ab
 
-// Home route
+// Home ke routes
 app.get('/', (req, res) => {
     try {
         res.render('index')
@@ -83,7 +83,7 @@ app.get('/', (req, res) => {
     }
 })
 
-// Read all users route
+// Read  users wale route
 app.get('/read', (req, res) => {
     try {
         res.render('read', { users })
@@ -96,7 +96,7 @@ app.get('/read', (req, res) => {
     }
 })
 
-// Delete user route
+// Delete user ke route
 app.get('/delete/:id', (req, res) => {
     try {
         const userId = req.params.id
@@ -121,7 +121,7 @@ app.get('/delete/:id', (req, res) => {
     }
 })
 
-// Edit user form route
+// Edit user ke liye route
 app.get('/edit/:id', (req, res) => {
     try {
         const userId = req.params.id
@@ -144,7 +144,7 @@ app.get('/edit/:id', (req, res) => {
     }
 })
 
-// Update user route
+// Update user ke liye  route
 app.post('/update/:id', (req, res) => {
     try {
         const userId = req.params.id
@@ -167,7 +167,7 @@ app.post('/update/:id', (req, res) => {
             })
         }
 
-        // Basic email validation
+        // Email Check karo
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
         if (!emailRegex.test(email)) {
             return res.status(400).json({
@@ -176,7 +176,7 @@ app.post('/update/:id', (req, res) => {
             })
         }
 
-        // Check for duplicate email (excluding current user)
+        // Already existing ka checking
         const duplicateUser = users.find(user => 
             user.email.toLowerCase() === email.trim().toLowerCase() && user._id !== userId
         )
@@ -187,7 +187,7 @@ app.post('/update/:id', (req, res) => {
             })
         }
 
-        // URL validation for image (if provided)
+        // URL validate karna
         if (image && image.trim()) {
             try {
                 new URL(image.trim())
@@ -199,7 +199,7 @@ app.post('/update/:id', (req, res) => {
             }
         }
 
-        // Update user
+        // Updating user changes ke baad
         users[userIndex] = {
             ...users[userIndex],
             name: name.trim(),
@@ -218,10 +218,10 @@ app.post('/update/:id', (req, res) => {
     }
 })
 
-// Create user route
+// Create user ke route
 app.post('/create', (req, res) => {
     try {
-        // Input validation
+        // Input Check karo
         const { name, email, image } = req.body
 
         if (!name || !email) {
@@ -231,7 +231,7 @@ app.post('/create', (req, res) => {
             })
         }
 
-        // Basic email validation
+        // Email Check karo
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
         if (!emailRegex.test(email)) {
             return res.status(400).json({
@@ -240,7 +240,7 @@ app.post('/create', (req, res) => {
             })
         }
 
-        // Check for duplicate email
+        // Already existing ka check
         const existingUser = users.find(user => 
             user.email.toLowerCase() === email.trim().toLowerCase()
         )
@@ -251,7 +251,7 @@ app.post('/create', (req, res) => {
             })
         }
 
-        // URL validation for image (if provided)
+        // Image ki URl Validation
         if (image && image.trim()) {
             try {
                 new URL(image.trim())
@@ -263,7 +263,7 @@ app.post('/create', (req, res) => {
             }
         }
 
-        // Create new user
+        // Creating  new user
         const newUser = {
             _id: userIdCounter.toString(),
             name: name.trim(),
@@ -285,7 +285,7 @@ app.post('/create', (req, res) => {
     }
 })
 
-// Create user form route
+// Creating user ka initial form route
 app.get('/create', (req, res) => {
     try {
         res.render('create')
@@ -298,7 +298,7 @@ app.get('/create', (req, res) => {
     }
 })
 
-// Health check endpoint (useful for deployment platforms)
+// Health check endpoint Deployment ke liye
 app.get('/health', (req, res) => {
     res.status(200).json({
         status: 'OK',
@@ -309,7 +309,7 @@ app.get('/health', (req, res) => {
     })
 })
 
-// API endpoint to get users as JSON
+// API endpoint taaki users in json format
 app.get('/api/users', (req, res) => {
     res.json({
         success: true,
@@ -318,7 +318,7 @@ app.get('/api/users', (req, res) => {
     })
 })
 
-// 404 handler - must be after all other routes
+// 404 error jab sab routes fail ho jaye
 app.use('*', (req, res) => {
     res.status(404).json({
         error: 'Page Not Found',
@@ -326,7 +326,7 @@ app.use('*', (req, res) => {
     })
 })
 
-// Global error handler - must be last
+// Global errors ke  handler 
 app.use((error, req, res, next) => {
     console.error('Unhandled error:', error)
     res.status(500).json({
@@ -335,7 +335,7 @@ app.use((error, req, res, next) => {
     })
 })
 
-// Start server
+// Server Chalu karo
 const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on port ${PORT}`)
     console.log(`Environment: ${NODE_ENV}`)
@@ -343,7 +343,7 @@ const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`Started with ${users.length} sample users`)
 })
 
-// Handle server errors
+// Server ke erros ke liye
 server.on('error', (error) => {
     if (error.code === 'EADDRINUSE') {
         console.error(`Port ${PORT} is already in use`)
