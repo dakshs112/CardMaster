@@ -1,13 +1,29 @@
 const express = require('express')
 const app = express()
 const path = require('path')
-const mongoose = require('mongoose')
-const user = require('./model/user')
 
 // Environment variables with defaults
 const PORT = process.env.PORT || 3000
 const NODE_ENV = process.env.NODE_ENV || 'development'
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/testapp1'
+
+// In-memory storage for users (will reset when server restarts)
+let users = [
+    {
+        _id: '1',
+        name: 'John Doe',
+        email: 'john@example.com',
+        image: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=400&h=400&fit=crop&crop=face'
+    },
+    {
+        _id: '2',
+        name: 'Jane Smith',
+        email: 'jane@example.com',
+        image: 'https://images.unsplash.com/photo-1494790108755-2616b612b786?w=400&h=400&fit=crop&crop=face'
+    }
+]
+
+// Counter for generating IDs
+let userIdCounter = 3
 
 // Trust proxy for deployment platforms like Render, Heroku, etc.
 app.set('trust proxy', 1)
@@ -41,36 +57,14 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }))
 // Static files middleware
 app.use(express.static(path.join(__dirname, 'public')))
 
-// Database connection with better error handling
-mongoose.connect(MONGODB_URI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-    serverSelectionTimeoutMS: 5000, // Timeout after 5s instead of 30s
-    socketTimeoutMS: 45000, // Close sockets after 45s of inactivity
-})
-
-mongoose.connection.on('error', (err) => {
-    console.error('MongoDB connection error:', err)
-})
-
-mongoose.connection.on('connected', () => {
-    console.log('Successfully connected to MongoDB')
-})
-
-mongoose.connection.on('disconnected', () => {
-    console.log('MongoDB disconnected')
-})
-
 // Graceful shutdown
 process.on('SIGINT', async () => {
     console.log('Shutting down gracefully...')
-    await mongoose.connection.close()
     process.exit(0)
 })
 
 process.on('SIGTERM', async () => {
     console.log('SIGTERM received, shutting down gracefully...')
-    await mongoose.connection.close()
     process.exit(0)
 })
 
@@ -90,88 +84,76 @@ app.get('/', (req, res) => {
 })
 
 // Read all users route
-app.get('/read', async (req, res) => {
+app.get('/read', (req, res) => {
     try {
-        const users = await user.find().lean() // .lean() for better performance
         res.render('read', { users })
     } catch (error) {
         console.error('Error fetching users:', error)
         res.status(500).json({ 
             error: 'Failed to fetch users',
-            message: NODE_ENV === 'development' ? error.message : 'Database connection error'
+            message: NODE_ENV === 'development' ? error.message : 'Failed to load users'
         })
     }
 })
 
 // Delete user route
-app.get('/delete/:id', async (req, res) => {
+app.get('/delete/:id', (req, res) => {
     try {
-        // Validate ObjectId format
-        if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
-            return res.status(400).json({
-                error: 'Invalid user ID',
-                message: 'The provided user ID is not valid'
-            })
-        }
-
-        const deletedUser = await user.findByIdAndDelete(req.params.id)
+        const userId = req.params.id
+        const userIndex = users.findIndex(user => user._id === userId)
         
-        if (!deletedUser) {
+        if (userIndex === -1) {
             return res.status(404).json({
                 error: 'User not found',
                 message: 'The user you are trying to delete does not exist'
             })
         }
 
+        const deletedUser = users.splice(userIndex, 1)[0]
         console.log(`User deleted: ${deletedUser.name} (${deletedUser._id})`)
         res.redirect('/read')
     } catch (error) {
         console.error('Error deleting user:', error)
         res.status(500).json({ 
             error: 'Failed to delete user',
-            message: NODE_ENV === 'development' ? error.message : 'Database operation failed'
+            message: NODE_ENV === 'development' ? error.message : 'Delete operation failed'
         })
     }
 })
 
 // Edit user form route
-app.get('/edit/:id', async (req, res) => {
+app.get('/edit/:id', (req, res) => {
     try {
-        // Validate ObjectId format
-        if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
-            return res.status(400).json({
-                error: 'Invalid user ID',
-                message: 'The provided user ID is not valid'
-            })
-        }
-
-        const userToEdit = await user.findById(req.params.id).lean()
+        const userId = req.params.id
+        const user = users.find(user => user._id === userId)
         
-        if (!userToEdit) {
+        if (!user) {
             return res.status(404).json({
                 error: 'User not found',
                 message: 'The user you are trying to edit does not exist'
             })
         }
 
-        res.render('edit', { user: userToEdit })
+        res.render('edit', { user })
     } catch (error) {
         console.error('Error fetching user for edit:', error)
         res.status(500).json({ 
             error: 'Failed to load user data',
-            message: NODE_ENV === 'development' ? error.message : 'Database connection error'
+            message: NODE_ENV === 'development' ? error.message : 'Failed to load user'
         })
     }
 })
 
 // Update user route
-app.post('/update/:id', async (req, res) => {
+app.post('/update/:id', (req, res) => {
     try {
-        // Validate ObjectId format
-        if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
-            return res.status(400).json({
-                error: 'Invalid user ID',
-                message: 'The provided user ID is not valid'
+        const userId = req.params.id
+        const userIndex = users.findIndex(user => user._id === userId)
+        
+        if (userIndex === -1) {
+            return res.status(404).json({
+                error: 'User not found',
+                message: 'The user you are trying to update does not exist'
             })
         }
 
@@ -194,6 +176,17 @@ app.post('/update/:id', async (req, res) => {
             })
         }
 
+        // Check for duplicate email (excluding current user)
+        const duplicateUser = users.find(user => 
+            user.email.toLowerCase() === email.trim().toLowerCase() && user._id !== userId
+        )
+        if (duplicateUser) {
+            return res.status(409).json({
+                error: 'Email already exists',
+                message: 'Another user with this email address already exists'
+            })
+        }
+
         // URL validation for image (if provided)
         if (image && image.trim()) {
             try {
@@ -206,45 +199,27 @@ app.post('/update/:id', async (req, res) => {
             }
         }
 
-        const updatedUser = await user.findByIdAndUpdate(
-            req.params.id,
-            { 
-                name: name.trim(), 
-                email: email.trim().toLowerCase(), 
-                image: image ? image.trim() : '' 
-            },
-            { new: true, runValidators: true }
-        )
-
-        if (!updatedUser) {
-            return res.status(404).json({
-                error: 'User not found',
-                message: 'The user you are trying to update does not exist'
-            })
+        // Update user
+        users[userIndex] = {
+            ...users[userIndex],
+            name: name.trim(),
+            email: email.trim().toLowerCase(),
+            image: image ? image.trim() : ''
         }
 
-        console.log(`User updated: ${updatedUser.name} (${updatedUser._id})`)
+        console.log(`User updated: ${users[userIndex].name} (${users[userIndex]._id})`)
         res.redirect('/read')
     } catch (error) {
         console.error('Error updating user:', error)
-        
-        // Handle validation errors
-        if (error.name === 'ValidationError') {
-            return res.status(400).json({
-                error: 'Validation Error',
-                message: Object.values(error.errors).map(e => e.message).join(', ')
-            })
-        }
-
         res.status(500).json({ 
             error: 'Failed to update user',
-            message: NODE_ENV === 'development' ? error.message : 'Database operation failed'
+            message: NODE_ENV === 'development' ? error.message : 'Update operation failed'
         })
     }
 })
 
 // Create user route
-app.post('/create', async (req, res) => {
+app.post('/create', (req, res) => {
     try {
         // Input validation
         const { name, email, image } = req.body
@@ -266,7 +241,9 @@ app.post('/create', async (req, res) => {
         }
 
         // Check for duplicate email
-        const existingUser = await user.findOne({ email: email.trim().toLowerCase() })
+        const existingUser = users.find(user => 
+            user.email.toLowerCase() === email.trim().toLowerCase()
+        )
         if (existingUser) {
             return res.status(409).json({
                 error: 'Email already exists',
@@ -286,36 +263,24 @@ app.post('/create', async (req, res) => {
             }
         }
 
-        const createdUser = await user.create({
+        // Create new user
+        const newUser = {
+            _id: userIdCounter.toString(),
             name: name.trim(),
             email: email.trim().toLowerCase(),
             image: image ? image.trim() : ''
-        })
+        }
 
-        console.log(`User created: ${createdUser.name} (${createdUser._id})`)
+        users.push(newUser)
+        userIdCounter++
+
+        console.log(`User created: ${newUser.name} (${newUser._id})`)
         res.redirect('/read')
     } catch (error) {
         console.error('Error creating user:', error)
-        
-        // Handle validation errors
-        if (error.name === 'ValidationError') {
-            return res.status(400).json({
-                error: 'Validation Error',
-                message: Object.values(error.errors).map(e => e.message).join(', ')
-            })
-        }
-
-        // Handle duplicate key errors
-        if (error.code === 11000) {
-            return res.status(409).json({
-                error: 'Duplicate Entry',
-                message: 'A user with this information already exists'
-            })
-        }
-
         res.status(500).json({ 
             error: 'Failed to create user',
-            message: NODE_ENV === 'development' ? error.message : 'Database operation failed'
+            message: NODE_ENV === 'development' ? error.message : 'Create operation failed'
         })
     }
 })
@@ -339,7 +304,17 @@ app.get('/health', (req, res) => {
         status: 'OK',
         timestamp: new Date().toISOString(),
         uptime: Math.floor(process.uptime()),
-        environment: NODE_ENV
+        environment: NODE_ENV,
+        totalUsers: users.length
+    })
+})
+
+// API endpoint to get users as JSON
+app.get('/api/users', (req, res) => {
+    res.json({
+        success: true,
+        count: users.length,
+        data: users
     })
 })
 
@@ -365,6 +340,7 @@ const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on port ${PORT}`)
     console.log(`Environment: ${NODE_ENV}`)
     console.log(`Access the app at: http://localhost:${PORT}`)
+    console.log(`Started with ${users.length} sample users`)
 })
 
 // Handle server errors
