@@ -10,15 +10,15 @@ const NODE_ENV = process.env.NODE_ENV || 'development'
 let users = [
     {
         _id: '1',
-        name: 'John Doe',
-        email: 'john@example.com',
-        image: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=400&h=400&fit=crop&crop=face'
+        name: 'Daksh Sharma',
+        email: 'dakshs112@gmail.com',
+        image: 'https://t4.ftcdn.net/jpg/01/80/57/69/360_F_180576920_TfIdXSmoBfzW8PaPfxqO1JdYtUYLIpUc.jpg'
     },
     {
         _id: '2',
-        name: 'Jane Smith',
-        email: 'jane@example.com',
-        image: 'https://images.unsplash.com/photo-1494790108755-2616b612b786?w=400&h=400&fit=crop&crop=face'
+        name: 'The Creator',
+        email: 'Tanjiro@DS.com',
+        image: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTBc6_ixylZKPo97MXdP_m33BtHlopHUNjBtg&s'
     }
 ]
 
